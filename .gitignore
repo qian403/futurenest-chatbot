@@ -79,3 +79,6 @@ volumes/
 .cursorrules
 .cursor/
 
+# Vector DB
+backend/chroma/
+

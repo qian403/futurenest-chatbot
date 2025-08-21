@@ -19,9 +19,12 @@ class EchoLLM(BaseLLM):
 
 
 class GoogleAiStudioLLM(BaseLLM):
-    def __init__(self, api_key: Optional[str], model: str = "gemini-1.5-flash") -> None:
+    def __init__(self, api_key: Optional[str], model: str = "models/gemini-1.5-flash") -> None:
         self.api_key = api_key
-        self.model = model
+        if model.startswith("models/") or model.startswith("tunedModels/"):
+            self.model = model
+        else:
+            self.model = f"models/{model}"
 
     def generate(self, prompt: str) -> str:
         if not self.api_key:
@@ -70,7 +73,8 @@ class OpenAiLLM(BaseLLM):
 def get_default_llm() -> BaseLLM:
     """Return default LLM provider (Google AI Studio). Falls back gracefully."""
     google_key = os.getenv("GOOGLE_API_KEY")
-    gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    # Default to Gemma family unless overridden by env. Accept bare name and prepend models/ automatically.
+    gemini_model = os.getenv("GEMINI_MODEL", "models/gemma-2-9b-it")
     return GoogleAiStudioLLM(api_key=google_key, model=gemini_model)
 
 

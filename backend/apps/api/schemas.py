@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from pydantic import BaseModel, Field, field_validator
 from apps.common.limits import MESSAGE_MAX_CHARS, HISTORY_ITEM_MAX_CHARS, HISTORY_MAX_TURNS
 
@@ -34,13 +34,15 @@ class ChatRequest(BaseModel):
 
 class ChatSource(BaseModel):
     id: Optional[str] = None
-    document_id: Optional[int] = None
+    document_id: Optional[Union[int, str]] = None
     snippet: Optional[str] = None
+    score: Optional[float] = None
 
 
 class ChatResponse(BaseModel):
     answer: str
     sources: List[ChatSource] = Field(default_factory=list)
+    retrieval: Optional[str] = None
 
 
 class ChatTurn(BaseModel):
@@ -53,5 +55,37 @@ class ChatTurn(BaseModel):
         if len(v) > HISTORY_ITEM_MAX_CHARS:
             raise ValueError(f"history item too long (>{HISTORY_ITEM_MAX_CHARS} chars)")
         return v
+
+
+# Ingest schemas
+class IngestDocument(BaseModel):
+    doc_id: str = Field(..., description="文件的唯一識別 ID")
+    text: str = Field(..., description="要索引的純文字內容")
+
+
+class IngestRequest(BaseModel):
+    documents: List[IngestDocument]
+
+
+class IngestResult(BaseModel):
+    doc_id: str
+    ok: bool = True
+    chunks: int = 0
+    upserts: int = 0
+    error: Optional[str] = None
+
+
+class IngestResponse(BaseModel):
+    results: List[IngestResult] = Field(default_factory=list)
+
+
+class TemplateMetaOut(BaseModel):
+    template_id: str
+    title: str
+    description: Optional[str] = None
+
+
+class IngestTemplateRequest(BaseModel):
+    template_id: str
 
 

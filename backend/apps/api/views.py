@@ -1,5 +1,15 @@
 from ninja import NinjaAPI
-from .schemas import HealthResponse, ChatRequest, ChatResponse
+from typing import List
+from .schemas import (
+    HealthResponse,
+    ChatRequest,
+    ChatResponse,
+    IngestRequest,
+    IngestResponse,
+    IngestResult,
+    TemplateMetaOut,
+    IngestTemplateRequest,
+)
 from apps.common.schemas import success_response
 from apps.common.exceptions import ApiError, api_error_handler, generic_error_handler
 from apps.common.limits import MAX_PAYLOAD_BYTES
@@ -9,6 +19,8 @@ from ninja.errors import ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
+from apps.rag.ingest import ingest_text
+from apps.rag.templates_registry import list_templates, load_template_text
 
 api = NinjaAPI(
     title="FutureNest RAG API",
@@ -76,5 +88,41 @@ def chat(request, payload: ChatRequest):
     # 呼叫服務層（之後可替換為真實 RAG）
     result = answer_with_rag(payload.message, payload.history, top_k=payload.top_k)
     return success_response(result.model_dump())
+
+
+@api.post("/ingest")
+@rate_limit(key="ingest:{ip}", limit=10, window_seconds=60)
+def ingest(request, payload: IngestRequest):
+    results: list[IngestResult] = []
+    for doc in payload.documents:
+        try:
+            chunks, upserts = ingest_text(doc.doc_id, doc.text)
+            results.append(IngestResult(doc_id=doc.doc_id, chunks=chunks, upserts=upserts))
+        except Exception as e:  # pragma: no cover
+            logger.exception("ingest_failed", extra={"doc_id": doc.doc_id, "trace_id": getattr(request, "trace_id", "")})
+            results.append(IngestResult(doc_id=doc.doc_id, ok=False, error=str(e)))
+    return success_response(IngestResponse(results=results).model_dump())
+
+
+@api.get("/templates")
+def templates(request):
+    metas = list_templates()
+    items = [
+        TemplateMetaOut(template_id=m.template_id, title=m.title, description=m.description).model_dump()
+        for m in metas
+    ]
+    return success_response(items)
+
+
+@api.post("/ingest-template")
+@rate_limit(key="ingest:{ip}", limit=10, window_seconds=60)
+def ingest_template(request, payload: IngestTemplateRequest):
+    try:
+        text = load_template_text(payload.template_id)
+        chunks, upserts = ingest_text(payload.template_id, text)
+        return success_response({"doc_id": payload.template_id, "chunks": chunks, "upserts": upserts})
+    except Exception as e:  # pragma: no cover
+        logger.exception("ingest_template_failed", extra={"template_id": payload.template_id, "trace_id": getattr(request, "trace_id", "")})
+        raise ApiError(code="ingest_failed", message=str(e), status_code=400)
 
  

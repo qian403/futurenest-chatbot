@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from apps.api.schemas import ChatTurn, ChatResponse, ChatSource
 from .llm_providers import get_default_llm
+from .vectorstore import ChromaVectorStore
 
 
 @dataclass
@@ -49,9 +50,15 @@ def build_prompt(message: str, history: Optional[List[ChatTurn]], contexts: List
 
 
 def answer_with_rag(message: str, history: Optional[List[ChatTurn]], top_k: int = 5) -> ChatResponse:
-    retriever = DemoRetriever()
+    store = None
+    try:
+        store = ChromaVectorStore()
+        results = store.query(message, top_k=top_k)
+        contexts = [RetrievedChunk(id=r["id"], document_id=(r.get("metadata") or {}).get("document_id"), text=r["text"]) for r in results]  # type: ignore[index]
+    except Exception:
+        retriever = DemoRetriever()
+        contexts = retriever.retrieve(message, top_k=top_k)
     llm = get_default_llm()
-    contexts = retriever.retrieve(message, top_k=top_k)
     prompt = build_prompt(message, history, contexts)
     answer = llm.generate(prompt)
     sources = [ChatSource(id=c.id, document_id=c.document_id, snippet=c.text) for c in contexts]
