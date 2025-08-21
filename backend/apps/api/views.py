@@ -1,0 +1,80 @@
+from ninja import NinjaAPI
+from .schemas import HealthResponse, ChatRequest, ChatResponse
+from apps.common.schemas import success_response
+from apps.common.exceptions import ApiError, api_error_handler, generic_error_handler
+from apps.common.limits import MAX_PAYLOAD_BYTES
+from apps.common.rate_limit import rate_limit
+from apps.rag.service import answer_with_rag
+from ninja.errors import ValidationError
+import logging
+
+logger = logging.getLogger(__name__)
+
+api = NinjaAPI(
+    title="FutureNest RAG API",
+    version="0.1.0",
+    description="RAG Chatbot 的後端 API，提供健康檢查與聊天端點。",
+)
+
+
+@api.exception_handler(ApiError)
+def _handle_api_error(request, exc: ApiError):
+    return api_error_handler(request, exc)
+
+
+@api.exception_handler(Exception)
+def _handle_generic_error(request, exc: Exception):
+    return generic_error_handler(request, exc)
+
+
+@api.exception_handler(ValidationError)
+def _handle_validation_error(request, exc: ValidationError):
+    # 422，內容為 pydantic 驗證錯誤詳情
+    from django.http import JsonResponse
+    try:
+        details = exc.errors() if callable(getattr(exc, "errors", None)) else getattr(exc, "errors", None)
+    except Exception:
+        details = None
+    logger.warning("validation_error", extra={"trace_id": getattr(request, "trace_id", "")})
+    return JsonResponse(
+        {
+            "success": False,
+            "data": None,
+            "error": {"code": "validation_error", "message": "Invalid request", "details": details},
+            "trace_id": getattr(request, "trace_id", ""),
+        },
+        status=422,
+    )
+
+
+@api.get("/health")
+def health(request):
+    return success_response(HealthResponse().model_dump())
+
+
+@api.post("/chat")
+@rate_limit(key="chat:{ip}", limit=20, window_seconds=60)
+def chat(request, payload: ChatRequest):
+    # 載荷大小基本檢查（非嚴格，Django 已解析完畢；仍可作為保護）
+    try:
+        meta_len = int(request.META.get("CONTENT_LENGTH") or 0)
+    except Exception:
+        meta_len = 0
+    try:
+        body_len = len(request.body or b"")
+    except Exception:
+        body_len = 0
+
+    effective_len = max(meta_len, body_len)
+    if effective_len > MAX_PAYLOAD_BYTES:
+        raise ApiError(
+            code="payload_too_large",
+            message=f"payload exceeds {MAX_PAYLOAD_BYTES} bytes",
+            status_code=413,
+        )
+
+    # 呼叫服務層（之後可替換為真實 RAG）
+    result = answer_with_rag(payload.message, payload.history, top_k=payload.top_k)
+    return success_response(result.model_dump())
+
+ 

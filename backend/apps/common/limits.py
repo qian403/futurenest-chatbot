@@ -1,0 +1,11 @@
+# 統一的 API 請求限制
+
+# 單次請求總大小（bytes）
+MAX_PAYLOAD_BYTES = 1_000_000  # 1MB
+
+# 聊天訊息與歷史限制
+MESSAGE_MAX_CHARS = 4000
+HISTORY_MAX_TURNS = 3
+HISTORY_ITEM_MAX_CHARS = 2000
+
+
