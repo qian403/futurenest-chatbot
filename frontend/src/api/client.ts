@@ -26,9 +26,10 @@ export function buildChatPayload(
     history: ChatTurn[] = [],
     options: { maxTurns?: number; maxChars?: number } = {}
 ): ChatRequest {
-    const maxTurns = options.maxTurns ?? 3;
-    const maxChars = options.maxChars ?? 2000;
+    const maxTurns = options.maxTurns ?? 30;
+    const maxChars = options.maxChars ?? 4000;
     const trim = (s: string) => (s.length > maxChars ? s.slice(-maxChars) : s);
+
     const trimmedHistory = history.slice(-maxTurns).map((t) => ({ ...t, content: trim(t.content) }));
     return { message: trim(message), history: trimmedHistory };
 }

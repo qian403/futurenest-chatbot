@@ -28,9 +28,14 @@ export default function ChatContainer() {
     const onSend = async (text: string) => {
         if (!text.trim()) return
         setLoading(true)
-        setMessages((prev) => [...prev, { role: 'user', content: text }])
+    
+
+
+        
+        const nextHistory: Msg[] = [...messages, { role: 'user', content: text }]
+        setMessages(nextHistory)
         try {
-            const history = messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }))
+            const history = nextHistory.map((m) => ({ role: m.role, content: m.content }))
             const payload = buildChatPayload(text, history)
             const res = await postChat(payload)
             if (res.success) {
@@ -75,8 +80,8 @@ export default function ChatContainer() {
             <div className="rounded-xl border border-white/10 bg-slate-900/40 backdrop-blur-md p-3 shadow-sm">
                 <div className="flex gap-2 items-end">
                     <div className="flex-1">
-                        <label className="block text-sm mb-1">選擇預設模板</label>
-                        <select className="w-full rounded-md bg-slate-800/70 border border-white/10 p-2 text-slate-100" value={selected} onChange={e => setSelected(e.target.value)}>
+                        <label className="block text-sm mb-1" htmlFor="template-select">選擇預設模板</label>
+                        <select id="template-select" title="選擇預設模板" className="w-full rounded-md bg-slate-800/70 border border-white/10 p-2 text-slate-100" value={selected} onChange={e => setSelected(e.target.value)}>
                             {templates.map(t => (
                                 <option key={t.template_id} value={t.template_id}>{t.title}</option>
                             ))}
