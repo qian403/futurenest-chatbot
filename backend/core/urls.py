@@ -15,8 +15,9 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.urls import path
-from apps.api.views import api
+from apps.api.views import api, health_plain
 
 urlpatterns = [
-    path('api/v1/', api.urls),
+    path('api/health', health_plain),  # simple health for tests
+    path('api/v1/', api.urls),         # versioned API
 ]

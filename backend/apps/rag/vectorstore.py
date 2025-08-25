@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
+import hashlib
+import math
 
 
 @dataclass
@@ -23,17 +25,65 @@ class GoogleEmbedding:
 
         self._genai = genai
         api_key = os.getenv("GOOGLE_API_KEY")
-        if api_key:
+        self._enabled = bool(api_key)
+        if self._enabled:
             self._genai.configure(api_key=api_key)
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         # Batch embed via google generative ai
         # API expects one text at a time for embed_content; loop for simplicity
+        if not self._enabled:
+            raise RuntimeError("GOOGLE_API_KEY not set")
         vectors: List[List[float]] = []
         for t in texts:
             resp = self._genai.embed_content(model=self.model, content=t)
-            vectors.append(resp.get("embedding", []) or resp.embedding)  # type: ignore[attr-defined]
+            # Normalize different SDK response shapes
+            try:
+                emb = resp.get("embedding")  # type: ignore[attr-defined]
+            except Exception:
+                emb = getattr(resp, "embedding", None)
+            # Some versions return {"embedding": {"values": [...]}}
+            if isinstance(emb, dict) and "values" in emb:
+                emb = emb.get("values")
+            if not isinstance(emb, list):
+                emb = []
+            vectors.append(emb)  # type: ignore[list-item]
         return vectors
+
+
+class LocalEmbedding:
+    """
+    簡易本地嵌入（無外部依賴）：
+    - 將 tokens hash 到固定維度（默認 256）做累加，並做 L2 正規化。
+    - 僅用於無 Google API key 的開發/測試環境，效果有限但可用於檢索驗證。
+    """
+
+    def __init__(self, dimension: int = 256) -> None:
+        self.dimension = max(16, dimension)
+
+    def _tokenize(self, text: str) -> List[str]:
+        # 中文/無空白語言：使用字元 bi-gram + 單字元
+        s = ''.join(ch for ch in text.lower() if not ch.isspace())
+        unigrams = list(s)
+        bigrams = [s[i:i+2] for i in range(len(s)-1)] if len(s) >= 2 else []
+        return unigrams + bigrams
+
+    def _hash_token(self, token: str) -> int:
+        # 使用 sha1 對 token 做 hash，取整數
+        return int(hashlib.sha1(token.encode("utf-8")).hexdigest(), 16)
+
+    def _vectorize(self, text: str) -> List[float]:
+        vec = [0.0] * self.dimension
+        for tok in self._tokenize(text):
+            h = self._hash_token(tok)
+            idx = h % self.dimension
+            vec[idx] += 1.0
+        # L2 normalize
+        norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+        return [v / norm for v in vec]
+
+    def embed(self, texts: List[str]) -> List[List[float]]:
+        return [self._vectorize(t) for t in texts]
 
 
 class ChromaVectorStore:
@@ -47,9 +97,34 @@ class ChromaVectorStore:
             import chromadb  # type: ignore
             os.makedirs(self.config.persist_dir, exist_ok=True)
             _client = chromadb.PersistentClient(path=self.config.persist_dir)
-            _CHROMA_COLLECTION = _client.get_or_create_collection(name="documents")
+            
+            # 檢查是否需要重建collection以匹配embedding維度
+            try:
+                existing_collection = _client.get_collection(name="documents")
+                # 測試維度兼容性
+                if os.getenv("GOOGLE_API_KEY"):
+                    test_embedder = GoogleEmbedding(self.config.embedding_model)
+                else:
+                    test_embedder = LocalEmbedding()
+                
+                # 嘗試用當前embedder查詢，看是否有維度衝突
+                test_vec = test_embedder.embed(["test"])[0]
+                existing_collection.query(query_embeddings=[test_vec], n_results=1)
+                _CHROMA_COLLECTION = existing_collection
+            except Exception:
+                # 維度不匹配，刪除並重建collection
+                try:
+                    _client.delete_collection(name="documents")
+                except Exception:
+                    pass
+                _CHROMA_COLLECTION = _client.create_collection(name="documents")
+                
         self._collection = _CHROMA_COLLECTION
-        self._embedder = GoogleEmbedding(self.config.embedding_model)
+        # 選擇嵌入器：有 GOOGLE_API_KEY 用 Google，否則使用本地嵌入
+        if os.getenv("GOOGLE_API_KEY"):
+            self._embedder = GoogleEmbedding(self.config.embedding_model)
+        else:
+            self._embedder = LocalEmbedding()
 
     def upsert(self, ids: List[str], texts: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> None:
         vectors = self._embedder.embed(texts)
@@ -60,20 +135,38 @@ class ChromaVectorStore:
             pass
         self._collection.upsert(ids=ids, embeddings=vectors, metadatas=metadatas, documents=texts)
 
-    def query(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def query(self, query_text: str, top_k: int = 5, filter_document_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         qvec = self._embedder.embed([query_text])[0]
-        res = self._collection.query(query_embeddings=[qvec], n_results=top_k)
+        where: Optional[Dict[str, Any]] = None
+        if filter_document_ids:
+            # Chroma where-filter on metadatas
+            where = {"document_id": {"$in": filter_document_ids}}
+        
+        # 增加查詢數量以獲得更多選擇，後續會進行過濾
+        search_k = min(top_k * 3, 20)
+        res = self._collection.query(query_embeddings=[qvec], n_results=search_k, where=where)
+        
         results: List[Dict[str, Any]] = []
-        # Normalize output
+        # Normalize output and add similarity score
         for i in range(len(res.get("ids", [[]])[0])):
+            distance = (res.get("distances") or [[1.0]])[0][i]
+            # Convert distance to similarity (closer to 1 is better)
+            similarity = max(0.0, 1.0 - distance) if distance is not None else 0.0
+            
             results.append(
                 {
                     "id": res["ids"][0][i],
                     "text": res["documents"][0][i],
                     "metadata": (res.get("metadatas") or [[None]])[0][i],
-                    "distance": (res.get("distances") or [[None]])[0][i],
+                    "distance": distance,
+                    "similarity": similarity,
                 }
             )
-        return results
+        
+        # 根據相似度過濾低品質結果 (本地嵌入相似度較低，進一步降低閾值)
+        filtered_results = [r for r in results if r["similarity"] > 0.01]
+        
+        # 返回top_k個結果
+        return filtered_results[:top_k]
 
 
