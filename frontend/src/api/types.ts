@@ -25,9 +25,11 @@ export type HealthResponse = {
 };
 
 export type ChatSource = {
-    id?: string;
-    document_id?: number;
+    id?: string | null;
+    document_id?: number | string | null;
     snippet?: string | null;
+    score?: number | null;
+    article_reference?: string | null;
 };
 
 export type ChatTurn = {

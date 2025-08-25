@@ -11,9 +11,10 @@ class HealthResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="使用者問題或訊息")
-    doc_ids: Optional[List[int]] = Field(default=None, description="限制檢索的文件 ID 列表")
+    doc_ids: Optional[List[Union[int, str]]] = Field(default=None, description="限制檢索的文件 ID 列表（字串或整數）")
     top_k: int = Field(default=5, ge=1, le=50, description="檢索返回片段數量")
     history: Optional[List["ChatTurn"]] = Field(default=None, description="最近的對話回合，僅保留 N 回合")
+    inline_citations: Optional[bool] = Field(default=None, description="是否在回答中加入 [n] 內文引用；預設取環境變數")
 
     @field_validator("message")
     @classmethod
@@ -37,6 +38,7 @@ class ChatSource(BaseModel):
     document_id: Optional[Union[int, str]] = None
     snippet: Optional[str] = None
     score: Optional[float] = None
+    article_reference: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

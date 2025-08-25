@@ -31,7 +31,7 @@ class ApiTests(TestCase):
         self.assertIn("answer", data.get("data", {}))
 
     def test_chat_history_too_long(self):
-        history = [{"role": "user", "content": "a"}] * 4  # 超過 3 回合
+        history = [{"role": "user", "content": "a"}] * 31  
         body = {"message": "hi", "history": history}
         resp = self.client.post(
             "/api/v1/chat",
@@ -67,4 +67,18 @@ class ApiTests(TestCase):
             )
             last_status = resp.status_code
         self.assertEqual(last_status, 429)
+
+    def test_chat_without_inline_citations(self):
+        body = {"message": "hi"}
+        resp = self.client.post(
+            "/api/v1/chat",
+            data=json.dumps(body),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        text = data.get("data", {}).get("answer", "")
+    
+        import re
+        self.assertIsNone(re.search(r"\[(\s*\d+(\s*,\s*\d+)*)\]", text))
 

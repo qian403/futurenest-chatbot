@@ -29,10 +29,14 @@ def rate_limit(key: str, limit: int, window_seconds: int = 60) -> Callable:
             cache_key = f"rl:{resolved_key}:{window}"
             count = cache.get(cache_key, 0)
             if count >= limit:
-                return JsonResponse(
+                resp = JsonResponse(
                     error_response("rate_limit", f"Too many requests, limit={limit}/{window_seconds}s"),
                     status=429,
                 )
+                # Provide Retry-After based on remaining window seconds
+                remain = window_seconds - (now % window_seconds)
+                resp["Retry-After"] = str(remain)
+                return resp
             cache.add(cache_key, 0, timeout=window_seconds)
             cache.incr(cache_key)
             return view_func(request, *args, **kwargs)

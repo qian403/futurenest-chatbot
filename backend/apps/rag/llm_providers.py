@@ -71,9 +71,14 @@ class OpenAiLLM(BaseLLM):
 
 
 def get_default_llm() -> BaseLLM:
-    """Return default LLM provider (Google AI Studio). Falls back gracefully."""
+    """Return default LLM provider (OpenAI). Falls back to Google AI Studio if OpenAI key not available."""
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        return OpenAiLLM(api_key=openai_key, model=openai_model)
+    
+    # Fallback to Google AI Studio
     google_key = os.getenv("GOOGLE_API_KEY")
-    # Default to Gemma family unless overridden by env. Accept bare name and prepend models/ automatically.
     gemini_model = os.getenv("GEMINI_MODEL", "models/gemma-2-9b-it")
     return GoogleAiStudioLLM(api_key=google_key, model=gemini_model)
 

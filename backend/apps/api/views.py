@@ -17,6 +17,7 @@ from apps.common.rate_limit import rate_limit
 from apps.rag.service import answer_with_rag
 from ninja.errors import ValidationError
 import logging
+from django.http import JsonResponse
 
 logger = logging.getLogger(__name__)
 from apps.rag.ingest import ingest_text
@@ -41,7 +42,8 @@ def _handle_generic_error(request, exc: Exception):
 
 @api.exception_handler(ValidationError)
 def _handle_validation_error(request, exc: ValidationError):
-    # 422，內容為 pydantic 驗證錯誤詳情
+
+
     from django.http import JsonResponse
     try:
         details = exc.errors() if callable(getattr(exc, "errors", None)) else getattr(exc, "errors", None)
@@ -85,8 +87,14 @@ def chat(request, payload: ChatRequest):
             status_code=413,
         )
 
-    # 呼叫服務層（之後可替換為真實 RAG）
-    result = answer_with_rag(payload.message, payload.history, top_k=payload.top_k)
+    # 呼叫服務層，傳遞可選 doc_ids 與 inline_citations
+    result = answer_with_rag(
+        payload.message,
+        payload.history,
+        top_k=payload.top_k,
+        doc_ids=[str(i) for i in (payload.doc_ids or [])] or None,
+        inline_citations=payload.inline_citations,
+    )
     return success_response(result.model_dump())
 
 
@@ -125,4 +133,7 @@ def ingest_template(request, payload: IngestTemplateRequest):
         logger.exception("ingest_template_failed", extra={"template_id": payload.template_id, "trace_id": getattr(request, "trace_id", "")})
         raise ApiError(code="ingest_failed", message=str(e), status_code=400)
 
- 
+
+# Plain Django health endpoint for compatibility with tests
+def health_plain(request):
+    return JsonResponse({"status": "ok"})

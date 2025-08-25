@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
 import { postChat, buildChatPayload, listTemplates, ingestTemplate } from '@/api/client'
-import type { TemplateMeta } from '@/api/types'
+import type { TemplateMeta, ChatSource } from '@/api/types'
 
-type Msg = { role: 'user' | 'assistant'; content: string }
+type Msg = { role: 'user' | 'assistant'; content: string; sources?: ChatSource[] }
 
 export default function ChatContainer() {
     const [messages, setMessages] = useState<Msg[]>([])
@@ -28,10 +28,10 @@ export default function ChatContainer() {
     const onSend = async (text: string) => {
         if (!text.trim()) return
         setLoading(true)
-    
 
 
-        
+
+
         const nextHistory: Msg[] = [...messages, { role: 'user', content: text }]
         setMessages(nextHistory)
         try {
@@ -39,7 +39,7 @@ export default function ChatContainer() {
             const payload = buildChatPayload(text, history)
             const res = await postChat(payload)
             if (res.success) {
-                setMessages((prev) => [...prev, { role: 'assistant', content: res.data.answer }])
+                setMessages((prev) => [...prev, { role: 'assistant', content: res.data.answer, sources: res.data.sources }])
             } else {
                 console.warn('API error', res.error)
                 setMessages((prev) => [
