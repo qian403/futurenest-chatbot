@@ -23,7 +23,6 @@ def split_text(text: str, chunk_size: int = 600, overlap: int = 150) -> List[str
         if current_length + sentence_length > chunk_size and current_chunk:
             chunks.append(current_chunk.strip())
             
-            # 計算重疊部分
             if overlap > 0 and len(current_chunk) > overlap:
                 overlap_text = current_chunk[-overlap:]
                 current_chunk = overlap_text + sentence

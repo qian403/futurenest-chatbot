@@ -1,4 +1,4 @@
-# 統一的 API 請求限制
+# 統一的 API請求限制
 
 # 單次請求總大小（bytes）
 MAX_PAYLOAD_BYTES = 1_000_000  # 1MB

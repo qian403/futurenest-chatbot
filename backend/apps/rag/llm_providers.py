@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseLLM:
-    def generate(self, prompt: str) -> str:  # pragma: no cover - interface
+    def generate(self, prompt: str) -> str: 
         raise NotImplementedError
 
 
@@ -32,7 +32,7 @@ class GoogleAiStudioLLM(BaseLLM):
             return EchoLLM().generate(prompt)
         try:
             # Lazy import to avoid hard dependency if not used
-            import google.generativeai as genai  # type: ignore
+            import google.generativeai as genai 
 
             genai.configure(api_key=self.api_key)
             model = genai.GenerativeModel(self.model)
@@ -65,7 +65,7 @@ class OpenAiLLM(BaseLLM):
             )
             content = completion.choices[0].message.content or ""
             return content.strip() or EchoLLM().generate(prompt)
-        except Exception as exc:  # pragma: no cover - external SDK
+        except Exception as exc: 
             logger.exception("OpenAI generate failed: %s", exc)
             return EchoLLM().generate(prompt)
 
