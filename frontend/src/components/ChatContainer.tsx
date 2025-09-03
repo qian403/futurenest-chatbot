@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
-import { postChat, buildChatPayload, listTemplates, ingestTemplate } from '@/api/client'
+import { postChat, buildChatPayload, listTemplates } from '@/api/client'
 import type { TemplateMeta, ChatSource } from '@/api/types'
 
 type Msg = { role: 'user' | 'assistant'; content: string; sources?: ChatSource[] }
@@ -11,7 +11,6 @@ export default function ChatContainer() {
     const [loading, setLoading] = useState(false)
     const [templates, setTemplates] = useState<TemplateMeta[]>([])
     const [selected, setSelected] = useState<string>('')
-    const [ingesting, setIngesting] = useState(false)
 
     useEffect(() => {
         (async () => {
@@ -55,23 +54,7 @@ export default function ChatContainer() {
         }
     }
 
-    const onIngestTemplate = async () => {
-        if (!selected) return
-        setIngesting(true)
-        try {
-            const res = await ingestTemplate(selected)
-            if (res.success) {
-                alert(`模板匯入完成：${res.data.doc_id}（chunks=${res.data.chunks}）`)
-            } else {
-                alert(`匯入失敗：${res.error?.message || ''}`)
-            }
-        } catch (e) {
-            console.error(e)
-            alert('匯入時發生錯誤')
-        } finally {
-            setIngesting(false)
-        }
-    }
+    // 手動匯入流程已移除
 
     const current = templates.find(t => t.template_id === selected)
 
@@ -87,9 +70,7 @@ export default function ChatContainer() {
                             ))}
                         </select>
                     </div>
-                    <button disabled={ingesting || !selected} onClick={onIngestTemplate} className="h-10 px-4 rounded-md bg-emerald-600/90 hover:bg-emerald-500/90 text-white disabled:opacity-50 border border-white/10">
-                        {ingesting ? '匯入中…' : '匯入模板'}
-                    </button>
+                
                 </div>
                 {selected && (
                     <div className="mt-2 text-sm text-slate-300/90 space-y-1">

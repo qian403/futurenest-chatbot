@@ -15,10 +15,11 @@ import os
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 
-# Load environment variables from .env if present
-load_dotenv(BASE_DIR / ".env")
+# Single source of env: project root .env (used by Docker Compose and local dev)
+ROOT_DIR = BASE_DIR.parent
+load_dotenv(ROOT_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production

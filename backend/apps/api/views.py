@@ -22,6 +22,7 @@ from django.http import JsonResponse
 logger = logging.getLogger(__name__)
 from apps.rag.ingest import ingest_text
 from apps.rag.templates_registry import list_templates, load_template_text
+from apps.rag.diagnostics import diagnose_rag_system
 
 api = NinjaAPI(
     title="FutureNest RAG API",
@@ -88,14 +89,23 @@ def chat(request, payload: ChatRequest):
         )
 
     # 呼叫服務層，傳遞可選 doc_ids 與 inline_citations
-    result = answer_with_rag(
-        payload.message,
-        payload.history,
-        top_k=payload.top_k,
-        doc_ids=[str(i) for i in (payload.doc_ids or [])] or None,
-        inline_citations=payload.inline_citations,
-    )
-    return success_response(result.model_dump())
+    try:
+        result = answer_with_rag(
+            payload.message,
+            payload.history,
+            top_k=payload.top_k,
+            doc_ids=[str(i) for i in (payload.doc_ids or [])] or None,
+            inline_citations=payload.inline_citations,
+        )
+        return success_response(result.model_dump())
+    except Exception:
+        logger.exception("answer_with_rag_failed", extra={"trace_id": getattr(request, "trace_id", "")})
+        from apps.api.schemas import ChatResponse, ChatSource
+        fallback_response = ChatResponse(
+            answer="抱歉，處理您的問題時發生了錯誤。請稍後再試，或簡化您的問題。",
+            sources=[]
+        )
+        return success_response(fallback_response.model_dump())
 
 
 @api.post("/ingest")
@@ -106,7 +116,7 @@ def ingest(request, payload: IngestRequest):
         try:
             chunks, upserts = ingest_text(doc.doc_id, doc.text)
             results.append(IngestResult(doc_id=doc.doc_id, chunks=chunks, upserts=upserts))
-        except Exception as e:  # pragma: no cover
+        except Exception as e:  
             logger.exception("ingest_failed", extra={"doc_id": doc.doc_id, "trace_id": getattr(request, "trace_id", "")})
             results.append(IngestResult(doc_id=doc.doc_id, ok=False, error=str(e)))
     return success_response(IngestResponse(results=results).model_dump())
@@ -132,6 +142,13 @@ def ingest_template(request, payload: IngestTemplateRequest):
     except Exception as e:  # pragma: no cover
         logger.exception("ingest_template_failed", extra={"template_id": payload.template_id, "trace_id": getattr(request, "trace_id", "")})
         raise ApiError(code="ingest_failed", message=str(e), status_code=400)
+
+
+@api.get("/diagnostics")
+def rag_diagnostics(request):
+    """RAG 系統診斷端點"""
+    diagnostics = diagnose_rag_system()
+    return success_response(diagnostics)
 
 
 # Plain Django health endpoint for compatibility with tests

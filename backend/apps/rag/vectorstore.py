@@ -15,19 +15,18 @@ class VSConfig:
 
 class GoogleEmbedding:
     def __init__(self, model: str) -> None:
-        # Ensure model name follows Google API format
-        if model.startswith("models/") or model.startswith("tunedModels/"):
-            self.model = model
-        else:
-            self.model = f"models/{model}"
-        # Lazy import
-        import google.generativeai as genai  # type: ignore
-
-        self._genai = genai
-        api_key = os.getenv("GOOGLE_API_KEY")
-        self._enabled = bool(api_key)
+        self.model = model
+        self._enabled = bool(os.getenv("GOOGLE_API_KEY"))
         if self._enabled:
-            self._genai.configure(api_key=api_key)
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+                self._genai = genai
+            except ImportError:
+                self._enabled = False
+                raise RuntimeError("Google GenerativeAI SDK not installed. Run: pip install google-generativeai")
+        else:
+            raise RuntimeError("GOOGLE_API_KEY not set")
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         # Batch embed via google generative ai
@@ -101,10 +100,13 @@ class ChromaVectorStore:
             # 檢查是否需要重建collection以匹配embedding維度
             try:
                 existing_collection = _client.get_collection(name="documents")
-                # 測試維度兼容性
-                if os.getenv("GOOGLE_API_KEY"):
-                    test_embedder = GoogleEmbedding(self.config.embedding_model)
-                else:
+                # 測試維度兼容性：使用與當前相同的嵌入器
+                try:
+                    if os.getenv("GOOGLE_API_KEY"):
+                        test_embedder = GoogleEmbedding(self.config.embedding_model)
+                    else:
+                        test_embedder = LocalEmbedding()
+                except RuntimeError:
                     test_embedder = LocalEmbedding()
                 
                 # 嘗試用當前embedder查詢，看是否有維度衝突
@@ -120,10 +122,14 @@ class ChromaVectorStore:
                 _CHROMA_COLLECTION = _client.create_collection(name="documents")
                 
         self._collection = _CHROMA_COLLECTION
-        # 選擇嵌入器：有 GOOGLE_API_KEY 用 Google，否則使用本地嵌入
-        if os.getenv("GOOGLE_API_KEY"):
-            self._embedder = GoogleEmbedding(self.config.embedding_model)
-        else:
+        # 選擇嵌入器：優先使用 Google Embedding，回退到本地嵌入
+        try:
+            if os.getenv("GOOGLE_API_KEY"):
+                self._embedder = GoogleEmbedding(self.config.embedding_model)
+            else:
+                self._embedder = LocalEmbedding()
+        except RuntimeError:
+            # Google API 不可用時回退到本地嵌入
             self._embedder = LocalEmbedding()
 
     def upsert(self, ids: List[str], texts: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> None:
@@ -142,16 +148,20 @@ class ChromaVectorStore:
             # Chroma where-filter on metadatas
             where = {"document_id": {"$in": filter_document_ids}}
         
-        # 增加查詢數量以獲得更多選擇，後續會進行過濾
-        search_k = min(top_k * 3, 20)
+        search_k = min(top_k * 10, 100)  
         res = self._collection.query(query_embeddings=[qvec], n_results=search_k, where=where)
         
         results: List[Dict[str, Any]] = []
-        # Normalize output and add similarity score
         for i in range(len(res.get("ids", [[]])[0])):
             distance = (res.get("distances") or [[1.0]])[0][i]
-            # Convert distance to similarity (closer to 1 is better)
-            similarity = max(0.0, 1.0 - distance) if distance is not None else 0.0
+
+
+            if isinstance(self._embedder, LocalEmbedding):
+                # For local embedding: lower distance = higher similarity, scale to 0-1 range
+                similarity = max(0.0, 1.0 / (1.0 + distance))
+            else:
+                # For Google embedding: standard distance to similarity conversion  
+                similarity = max(0.0, 1.0 - distance) if distance is not None else 0.0
             
             results.append(
                 {
@@ -163,8 +173,10 @@ class ChromaVectorStore:
                 }
             )
         
-        # 根據相似度過濾低品質結果 (本地嵌入相似度較低，進一步降低閾值)
-        filtered_results = [r for r in results if r["similarity"] > 0.01]
+        # 根據相似度過濾低品質結果 - 進一步放寬閾值以支援更廣泛的問題
+        # 本地嵌入需要更寬鬆的閾值來支援語意相關但字詞不同的查詢
+        min_similarity = 0.1 if isinstance(self._embedder, GoogleEmbedding) else 0.0
+        filtered_results = [r for r in results if r["similarity"] > min_similarity]
         
         # 返回top_k個結果
         return filtered_results[:top_k]
