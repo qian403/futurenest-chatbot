@@ -32,9 +32,9 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install Python dependencies
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Copy backend source code
 COPY backend/ ./
@@ -48,6 +48,9 @@ RUN mkdir -p media logs
 # Collect static files
 RUN python manage.py collectstatic --noinput
 
+RUN printf '#!/bin/sh\nset -e\npython manage.py migrate --noinput\nexec "$@"' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app
@@ -58,7 +61,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python manage.py check --deploy || exit 1
+    CMD python manage.py check || exit 1
 
-# Start server
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

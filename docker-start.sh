@@ -57,7 +57,7 @@ case "$1" in
         ;;
     build)
         echo -e "${GREEN}Building Docker image...${NC}"
-        docker-compose build --no-cache
+        docker-compose build
         echo -e "${GREEN}Build completed${NC}"
         ;;
     clean)
