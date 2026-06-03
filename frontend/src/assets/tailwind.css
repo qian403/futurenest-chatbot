@@ -2,4 +2,87 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html, body {
+    background-color: #0a0a0b;
+    color: #ededed;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    text-rendering: optimizeLegibility;
+  }
+}
 
+@layer components {
+  .msg-prose {
+    line-height: 1.75;
+    color: #ededed;
+  }
+  .msg-prose p {
+    margin: 0.5em 0;
+  }
+  .msg-prose p:first-child { margin-top: 0; }
+  .msg-prose p:last-child { margin-bottom: 0; }
+  .msg-prose h1, .msg-prose h2, .msg-prose h3 {
+    font-weight: 600;
+    margin-top: 1.2em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+  }
+  .msg-prose h1 { font-size: 1.25rem; }
+  .msg-prose h2 { font-size: 1.125rem; }
+  .msg-prose h3 { font-size: 1rem; }
+  .msg-prose ul, .msg-prose ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+  }
+  .msg-prose ul { list-style: disc; }
+  .msg-prose ol { list-style: decimal; }
+  .msg-prose li { margin: 0.2em 0; }
+  .msg-prose code {
+    background: #1f1f23;
+    border: 1px solid #26262a;
+    padding: 0.1em 0.35em;
+    border-radius: 0.3rem;
+    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .msg-prose pre {
+    background: #1f1f23;
+    border: 1px solid #26262a;
+    padding: 0.9em 1em;
+    border-radius: 0.6rem;
+    overflow-x: auto;
+    margin: 0.8em 0;
+  }
+  .msg-prose pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+  .msg-prose a {
+    color: #10a37f;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .msg-prose blockquote {
+    border-left: 2px solid #26262a;
+    padding-left: 0.9em;
+    color: #b8b8be;
+    margin: 0.6em 0;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #2a2a2e transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #2a2a2e;
+    border-radius: 999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #3a3a3f; }
+}
